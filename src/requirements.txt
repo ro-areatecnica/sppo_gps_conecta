@@ -1,0 +1,8 @@
+functions-framework==3.7.0
+google-cloud-bigquery
+google-cloud-secret-manager==2.21.0
+pandas==2.2.2
+pyarrow==17.0.0
+python-decouple==3.8
+requests==2.32.3
+Flask
