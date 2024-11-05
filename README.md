@@ -1,1 +1,0 @@
-# sppo_gps_conecta

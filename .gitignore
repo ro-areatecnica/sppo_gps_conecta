@@ -1,0 +1,43 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# C extensions
+*.so
+
+# Distribution / packaging
+*.egg-info/
+*.egg
+dist/
+build/
+wheels/
+
+# Logs and coverage reports
+*.log
+*.cover
+.coverage
+.cache
+.pytest_cache/
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+.env.*
+
+# Secrets and credentials
+credentials/
+*.json
+
+# IDE settings
+.idea/
+.vscode/
+
+# Jupyter
+.ipynb_checkpoints
+
+# PyCharm
+# Ignore entire idea folder
+.idea/
