@@ -13,7 +13,6 @@ class ProviderEnum(Enum):
     """Classe de enumeração para encapsular parâmetro de provedores de serviço de GPS
     """
     CONECTA = "conecta"
-    ZIRIX = "zirix"
 
 
 class Provider(APIClient):
