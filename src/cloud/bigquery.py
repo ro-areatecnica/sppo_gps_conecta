@@ -34,9 +34,9 @@ class GoogleCloudClient:
             query = f"""
                 INSERT INTO `{self.client.project}.{dataset_id}.{control_table_id}` (api, endpoint, last_extraction, status)
                 VALUES 
-                    ('conecta', 'EnvioSMTR', '{datetime.utcnow()}', 'success'),
-                    ('conecta', 'envioViagensSMTR', '{datetime.utcnow()}', 'success'),
-                    ('conecta', 'EnvioViagensRetroativasSMTR', '{datetime.utcnow()}', 'success')
+                    ('conecta', 'envioSMTR', '{datetime.utcnow()}', 'success'),
+                    ('conecta', 'EnvioViagensSMTR', '{datetime.utcnow()}', 'success'),
+                    ('conecta', 'EnvioRealocacoesSMTR', '{datetime.utcnow()}', 'success')
             """
             self.client.query(query).result()
             logging.info(f"Registro inicial inserido na tabela de controle '{control_table_id}'.")
