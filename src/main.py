@@ -7,8 +7,8 @@ from config import (
     START_DATE, END_DATE
 )
 from cloud.bigquery import GoogleCloudClient
-from utils.data_utils import parse_date
 from utils.helpers import json_to_df
+
 
 @functions_framework.http
 def main(request):
@@ -62,28 +62,34 @@ def main(request):
 
     return "Dados processados com sucesso", 200
 
+
 def define_dates(endpoint, last_execution, now):
+    # Verifica se as datas foram passadas por variável de ambiente
     if START_DATE and END_DATE:
-        start_date = parse_date(START_DATE)
-        end_date = parse_date(END_DATE)
+        start_date = START_DATE
+        end_date = END_DATE
     else:
+        # Caso contrário, usa a lógica para recuperar a última execução e ajustar as datas
         if last_execution and last_execution.get('last_extraction'):
-            start_date = parse_date(last_execution['last_extraction'])
+            start_date_dt = last_execution['last_extraction']
         else:
-            start_date = now
+            start_date_dt = now
 
-        end_date = now
+        end_date_dt = now
 
-        if endpoint in ['envioViagensSMTR', 'EnvioViagensRetroativasSMTR']:
-            if now - start_date > timedelta(hours=1):
-                end_date = start_date + timedelta(hours=1)
+        if endpoint in ['EnvioViagensSMTR', 'EnvioRealocacoesSMTR']:
+            if now - start_date_dt > timedelta(hours=1):
+                end_date_dt = start_date_dt + timedelta(hours=1)
             else:
                 return None, None
-        elif endpoint == 'EnvioSMTR':
-            if now - start_date > timedelta(minutes=5):
-                end_date = start_date + timedelta(minutes=5)
+        elif endpoint == 'envioSMTR':
+            if now - start_date_dt > timedelta(minutes=5):
+                end_date_dt = start_date_dt + timedelta(minutes=5)
             else:
                 return None, None
+
+        start_date = start_date_dt.strftime('%Y-%m-%d %H:%M:%S')
+        end_date = end_date_dt.strftime('%Y-%m-%d %H:%M:%S')
 
     return start_date, end_date
 
@@ -94,11 +100,11 @@ def process_data(gps_provider, client, endpoint, logger, start_date, end_date):
     logger.info(f'End date: {end_date}')
 
     results = None
-    if endpoint == 'EnvioSMTR':
+    if endpoint == 'envioSMTR':
         results = gps_provider.get_registros(data_hora_inicio=start_date, data_hora_fim=end_date)
-    elif endpoint == 'EnvioViagensRetroativasSMTR':
+    elif endpoint == 'EnvioRealocacoesSMTR':
         results = gps_provider.get_realocacao(data_hora_inicio=start_date, data_hora_fim=end_date)
-    elif endpoint == 'envioViagensSMTR':
+    elif endpoint == 'EnvioViagensSMTR':
         results = gps_provider.get_viagens_consolidadas(data_hora_inicio=start_date, data_hora_fim=end_date)
     else:
         raise ValueError(f'Endpoint desconhecido: {endpoint}')
@@ -111,7 +117,12 @@ def process_data(gps_provider, client, endpoint, logger, start_date, end_date):
             client.load_df_to_bigquery(df_results, GOOGLE_CLOUD_DATASET, table_name)
             client.update_control_table(GOOGLE_CLOUD_DATASET, GOOGLE_CLOUD_CONTROL_TABLE,
                                         ProviderEnum.CONECTA.value, endpoint, 'success',
-                                        last_extraction=datetime.now(timezone.utc).isoformat())
+                                        last_extraction=datetime.now())
+
+            # Contar registros no BigQuery
+            total_records = client.count_records(GOOGLE_CLOUD_DATASET, table_name)
+            logger.info(f'Total de registros após carregamento: {total_records}')
+
         else:
             client.update_control_table(GOOGLE_CLOUD_DATASET, GOOGLE_CLOUD_CONTROL_TABLE,
                                         ProviderEnum.CONECTA.value, endpoint, 'failed')

@@ -34,9 +34,9 @@ class GoogleCloudClient:
             query = f"""
                 INSERT INTO `{self.client.project}.{dataset_id}.{control_table_id}` (api, endpoint, last_extraction, status)
                 VALUES 
-                    ('conecta', 'EnvioSMTR', '{datetime.utcnow().isoformat()}', 'success'),
-                    ('conecta', 'envioViagensSMTR', '{datetime.utcnow().isoformat()}', 'success'),
-                    ('conecta', 'EnvioViagensRetroativasSMTR', '{datetime.utcnow().isoformat()}', 'success')
+                    ('conecta', 'EnvioSMTR', '{datetime.utcnow()}', 'success'),
+                    ('conecta', 'envioViagensSMTR', '{datetime.utcnow()}', 'success'),
+                    ('conecta', 'EnvioViagensRetroativasSMTR', '{datetime.utcnow()}', 'success')
             """
             self.client.query(query).result()
             logging.info(f"Registro inicial inserido na tabela de controle '{control_table_id}'.")
@@ -49,6 +49,7 @@ class GoogleCloudClient:
             AND status IN ('failed', 'success')  -- Considera tanto falhos quanto sucesso
             AND TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), last_extraction, MINUTE) > {BACKOFF_MINUTES}
         """
+
         results = self.client.query(query).result()
         # Copia os resultados para evitar reiteração
         results_list = list(results)
@@ -112,3 +113,11 @@ class GoogleCloudClient:
         except Exception as e:
             logging.error(f"Erro ao atualizar a tabela de controle para o endpoint '{endpoint}': {e}")
             raise
+
+    def count_records(self, dataset_id, table_id):
+        """Conta o número de registros em uma tabela BigQuery."""
+        query = f"SELECT COUNT(*) as total FROM `{self.client.project}.{dataset_id}.{table_id}`"
+        query_job = self.client.query(query)
+        results = query_job.result()
+        for row in results:
+            return row.total
