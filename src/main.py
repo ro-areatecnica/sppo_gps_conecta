@@ -64,30 +64,29 @@ def main(request):
 
 
 def define_dates(endpoint, last_execution, now):
-    # Verifica se as datas foram passadas por variável de ambiente
     if START_DATE and END_DATE:
         start_date = START_DATE
         end_date = END_DATE
     else:
-        # Caso contrário, usa a lógica para recuperar a última execução e ajustar as datas
-        if last_execution and last_execution.get('last_extraction'):
-            start_date_dt = last_execution['last_extraction']
-        else:
-            start_date_dt = now
-
+        # Determina o start_date com base na última execução, ou usa o horário atual se for a primeira execução
+        start_date_dt = last_execution['last_extraction'] if last_execution else now
         end_date_dt = now
 
+        # Definindo o intervalo específico para cada endpoint
         if endpoint in ['EnvioViagensSMTR', 'EnvioRealocacoesSMTR']:
-            if now - start_date_dt > timedelta(hours=1):
+            # Extrai dados a cada 1 hora
+            if now - start_date_dt >= timedelta(hours=1):
                 end_date_dt = start_date_dt + timedelta(hours=1)
             else:
-                return None, None
+                return None, None  # Ignora se o intervalo de 1 hora ainda não foi atingido
         elif endpoint == 'envioSMTR':
-            if now - start_date_dt > timedelta(minutes=5):
+            # Extrai dados a cada 5 minutos
+            if now - start_date_dt >= timedelta(minutes=5):
                 end_date_dt = start_date_dt + timedelta(minutes=5)
             else:
-                return None, None
+                return None, None  # Ignora se o intervalo de 5 minutos ainda não foi atingido
 
+        # Formatação das datas em string para o processamento
         start_date = start_date_dt.strftime('%Y-%m-%d %H:%M:%S')
         end_date = end_date_dt.strftime('%Y-%m-%d %H:%M:%S')
 
