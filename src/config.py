@@ -10,10 +10,8 @@ def get_secret_key(secret_id):
 GOOGLE_CLOUD_PROJECT = config('GOOGLE_CLOUD_PROJECT')
 URL = config('URL')
 ENDPOINT_REGISTROS = config('ENDPOINT_REGISTROS', default='')
-ENDPOINT_REALOCACAO = config('ENDPOINT_REALOCACAO', default='')
-ENDPOINT_VIAGENS_CONSOLIDADAS = config('ENDPOINT_VIAGENS_CONSOLIDADAS', default='')
 
-API_KEY = get_secret_key('api_key_conecta')  # Atualizado para usar apenas o secret_id
+API_KEY = get_secret_key('api_key_conecta')
 GOOGLE_CLOUD_DATASET = config('GOOGLE_CLOUD_DATASET')
 GOOGLE_CLOUD_CONTROL_TABLE = config('GOOGLE_CLOUD_CONTROL_TABLE', default='control_table')
 PROVIDER = config('PROVIDER')

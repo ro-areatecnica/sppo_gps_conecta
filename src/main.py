@@ -9,7 +9,6 @@ from config import (
 from cloud.bigquery import GoogleCloudClient
 from utils.helpers import json_to_df
 
-
 @functions_framework.http
 def main(request):
     try:
@@ -18,7 +17,8 @@ def main(request):
 
         client.create_control_table_if_not_exists(
             dataset_id=GOOGLE_CLOUD_DATASET,
-            control_table_id=GOOGLE_CLOUD_CONTROL_TABLE
+            control_table_id=GOOGLE_CLOUD_CONTROL_TABLE,
+            partition_field = "data"
         )
 
         endpoints_to_run = client.get_failed_success_endpoints(
@@ -29,9 +29,9 @@ def main(request):
 
         if not endpoints_to_run:
             logger.info("Nenhum endpoint falho ou sucesso recente encontrado na tabela de controle.")
-            return "Nenhum endpoint encontrado", 200
+            return "Nenhum endpoint encontrado"
 
-        logger.info(f"Endpoints encontrados: {endpoints_to_run}")
+        logger.info(f"Endpoints encontrados: {endpoints_to_run}"), 200
 
         gps_provider = Provider(ProviderEnum.CONECTA.value)
 
@@ -46,83 +46,68 @@ def main(request):
                 continue
 
             logger.info(f"Processando endpoint: {endpoint}, Start date: {start_date}, End date: {end_date}")
-            try:
-                process_data(gps_provider, client, endpoint, logger, start_date, end_date)
-            except Exception as e:
-                logger.error(f"Erro ao processar endpoint {endpoint}: {str(e)}")
-                client.update_control_table(
-                    GOOGLE_CLOUD_DATASET, GOOGLE_CLOUD_CONTROL_TABLE,
-                    ProviderEnum.CONECTA.value, endpoint, "failed"
-                )
+
+            process_data(gps_provider, client, endpoint, logger, start_date, end_date)
+
 
     except Exception as e:
-        logger.error(f"Erro durante a execução: {str(e)}")
-        return f"Erro durante a execução: {str(e)}", 500
+        logger.error(f"Erro durante a execução: {str(e)}"), 500
+        return f"Erro durante a execução: {str(e)}"
     logger.info('====== PROCESSO ENCERRADO ======')
 
     return "Dados processados com sucesso", 200
-
 
 def define_dates(endpoint, last_execution, now):
     if START_DATE and END_DATE:
         start_date = START_DATE
         end_date = END_DATE
     else:
-        # Determina o start_date com base na última execução, ou usa o horário atual se for a primeira execução
-        start_date_dt = last_execution['last_extraction'] if last_execution else now
-        end_date_dt = now
+        start_date_dt = last_execution['last_extraction'] or now - timedelta(minutes=5)
+        end_date_dt = start_date_dt + timedelta(minutes=5)
+        if endpoint == 'envioSMTR':
+            if now < end_date_dt:
+                return None, None
 
-        # Definindo o intervalo específico para cada endpoint
-        if endpoint in ['EnvioViagensSMTR', 'EnvioRealocacoesSMTR']:
-            # Extrai dados a cada 1 hora
-            if now - start_date_dt >= timedelta(hours=1):
-                end_date_dt = start_date_dt + timedelta(hours=1)
-            else:
-                return None, None  # Ignora se o intervalo de 1 hora ainda não foi atingido
-        elif endpoint == 'envioSMTR':
-            # Extrai dados a cada 5 minutos
-            if now - start_date_dt >= timedelta(minutes=5):
-                end_date_dt = start_date_dt + timedelta(minutes=5)
-            else:
-                return None, None  # Ignora se o intervalo de 5 minutos ainda não foi atingido
-
-        # Formatação das datas em string para o processamento
         start_date = start_date_dt.strftime('%Y-%m-%d %H:%M:%S')
         end_date = end_date_dt.strftime('%Y-%m-%d %H:%M:%S')
 
     return start_date, end_date
 
-
 def process_data(gps_provider, client, endpoint, logger, start_date, end_date):
-    """Executa a lógica de processamento para um endpoint específico."""
     logger.info(f'Start date: {start_date}')
     logger.info(f'End date: {end_date}')
 
-    results = None
-    if endpoint == 'envioSMTR':
+    try:
+
         results = gps_provider.get_registros(data_hora_inicio=start_date, data_hora_fim=end_date)
-    elif endpoint == 'EnvioRealocacoesSMTR':
-        results = gps_provider.get_realocacao(data_hora_inicio=start_date, data_hora_fim=end_date)
-    elif endpoint == 'EnvioViagensSMTR':
-        results = gps_provider.get_viagens_consolidadas(data_hora_inicio=start_date, data_hora_fim=end_date)
-    else:
-        raise ValueError(f'Endpoint desconhecido: {endpoint}')
-
-    if results:
         df_results = json_to_df(results)
-        if not df_results.empty:
-            df_results['ro_extraction_ts'] = datetime.now(timezone.utc)
-            table_name = client.get_table_name(endpoint)
-            client.load_df_to_bigquery(df_results, GOOGLE_CLOUD_DATASET, table_name)
-            client.update_control_table(GOOGLE_CLOUD_DATASET, GOOGLE_CLOUD_CONTROL_TABLE,
-                                        ProviderEnum.CONECTA.value, endpoint, 'success',
-                                        last_extraction=datetime.now())
 
-            # Contar registros no BigQuery
-            total_records = client.count_records(GOOGLE_CLOUD_DATASET, table_name)
-            logger.info(f'Total de registros após carregamento: {total_records}')
-
+        if not results or df_results.empty:
+            message = f"Erro: Nenhum dado retornado para o intervalo {start_date} - {end_date}"
+            client.insert_control_table(
+                GOOGLE_CLOUD_DATASET, GOOGLE_CLOUD_CONTROL_TABLE,
+                ProviderEnum.CONECTA.value, endpoint, 'failed', datetime.now().date(),
+                last_extraction=end_date, total_extracted=len(results), total_stored=len(df_results), message=message
+            )
+            return
         else:
-            client.update_control_table(GOOGLE_CLOUD_DATASET, GOOGLE_CLOUD_CONTROL_TABLE,
-                                        ProviderEnum.CONECTA.value, endpoint, 'failed')
+            if not df_results.empty:
+                df_results['data_extraction'] = datetime.now(timezone.utc).date()
+                table_name = client.get_table_name(endpoint)
 
+                client.load_df_to_bigquery(df_results, GOOGLE_CLOUD_DATASET, table_name,
+                                           partition_field="data_extraction")
+                client.insert_control_table(
+                    GOOGLE_CLOUD_DATASET, GOOGLE_CLOUD_CONTROL_TABLE,
+                    ProviderEnum.CONECTA.value, endpoint, 'success', datetime.now().date(),
+                    last_extraction=end_date, total_extracted=len(results), total_stored=len(df_results),
+                    message=f"Data inserted successfully."
+                )
+
+    except Exception as e:
+        client.insert_control_table(
+            GOOGLE_CLOUD_DATASET, GOOGLE_CLOUD_CONTROL_TABLE,
+            ProviderEnum.CONECTA.value, endpoint, 'failed', datetime.now().date(),
+            last_extraction=end_date, total_extracted=0, total_stored=0,
+            message=f"Erro ao processar endpoint {endpoint}: {type(e).__name__} - {str(e)}"
+        )
